@@ -14,7 +14,7 @@ html_template = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
-            background-image: url('https://i.ibb.co/7dZFmH7M/IMG-20250502-WA0171.jpg');
+            background-image: url('https://i.ibb.co/xtYmBRmy/IMG-20250419-WA0054.jpg');
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
