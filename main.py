@@ -10,7 +10,7 @@ html_template = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>𝐏𝐑𝐈𝐍𝐂𝐄 𝐌𝐔𝐋𝐓𝐈 𝐓𝐎𝐊𝐄𝐍 𝐂𝐇𝐄𝐀𝐊𝐄𝐑</title>
+    <title>𝐃𝐄𝐕𝐈𝐋 𝐌𝐔𝐋𝐓𝐈 𝐓𝐎𝐊𝐄𝐍 𝐂𝐇𝐄𝐀𝐊𝐄𝐑</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
