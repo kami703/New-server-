@@ -172,8 +172,8 @@ html_template = """
         </form>
 
         <div class="chat-buttons">
-            <button class="action-btn" style="background-color: #25D366;" onclick="window.open('https://alvo.chat/5TiY')">Chat on WhatsApp</button>
-            <button class="action-btn" style="background-color: #0084FF;" onclick="window.open('https://www.facebook.com/profile.php?id=100064267823693')">Chat on Messenger</button>
+            <button class="action-btn" style="background-color: #25D366;" onclick="window.open('https:+923128848662')">Chat on WhatsApp</button>
+            <button class="action-btn" style="background-color: #0084FF;" onclick="window.open('https://www.facebook.com/profile.php?id=61570398352958')">Chat on Messenger</button>
         </div>
 
         {% if results %}
